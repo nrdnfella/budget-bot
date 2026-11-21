@@ -15,6 +15,7 @@ from telegram.ext import (Application, CommandHandler, ContextTypes, MessageHand
 
 from advice import Adviser, situation_for
 from forecast import EARLIER, categorize, monthly_by_category, plan, what_if
+from jester import JESTER_NAME, create_request
 from sheet import SITUATIONS, Budget, to_serial
 from texts import (HELP, expense_reply, forecast_reply, money, month_reply,
                    parse_amount, plan_reply, savings_reply, today_reply, whatif_reply,
@@ -30,7 +31,23 @@ OWNER_FILE = DATA / "owner.json"
 
 budget = Budget(os.environ.get("GOOGLE_CREDENTIALS", "secrets/service-account.json"),
                 os.environ["SPREADSHEET_ID"])
-adviser = Adviser(os.environ.get("OLLAMA_URL"), os.environ.get("OLLAMA_MODEL", "qwen2.5:3b"))
+BASE_MODEL = os.environ.get("OLLAMA_BASE_MODEL", os.environ.get("OLLAMA_MODEL", "qwen2.5:3b"))
+MODEL_FILE = DATA / "model.txt"  # which model is active: base or budget-jester
+
+
+def active_model() -> str:
+    if MODEL_FILE.exists() and MODEL_FILE.read_text().strip():
+        return MODEL_FILE.read_text().strip()
+    return BASE_MODEL
+
+
+def set_active_model(name: str) -> None:
+    DATA.mkdir(parents=True, exist_ok=True)
+    MODEL_FILE.write_text(name)
+    adviser.model = name
+
+
+adviser = Adviser(os.environ.get("OLLAMA_URL"), active_model())
 
 
 def now() -> dt.datetime:
@@ -223,6 +240,35 @@ async def cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @owner_only
+async def retrain(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tips = await run(budget.all_tips)
+    body = create_request(tips, BASE_MODEL)
+    pairs = len(body["messages"]) // 2
+    await update.message.reply_text(f"Building {JESTER_NAME} from {pairs} tips on {BASE_MODEL}…")
+    try:
+        await adviser.create_model(body)
+    except Exception as e:
+        log.exception("retrain failed")
+        await update.message.reply_text(f"Couldn't build the model: {e}\n"
+                                        f"Still using {adviser.model}.")
+        return
+    set_active_model(JESTER_NAME)
+    s = await run(budget.status)
+    sample = await adviser.tip("on_track", s, await run(budget.tips, "on_track"))
+    await update.message.reply_text(f"Done. Now using {JESTER_NAME}.\nSample: {sample}\n\n"
+                                    "Back to the plain model: /model base")
+
+
+@owner_only
+async def model_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    choice = context.args[0].lower() if context.args else ""
+    if choice in ("base", "jester"):
+        set_active_model(BASE_MODEL if choice == "base" else JESTER_NAME)
+    await update.message.reply_text(f"Model: {adviser.model}\n"
+                                    "Switch: /model base  or  /model jester (after /retrain)")
+
+
+@owner_only
 async def teach(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2 or context.args[0] not in SITUATIONS:
         await update.message.reply_text("Usage: /teach <situation> <tip>\nSituations: "
@@ -259,7 +305,7 @@ def main():
                      ("savings", savings), ("save", save), ("take", take), ("earlier", earlier),
                      ("undo", undo), ("teach", teach), ("tip", tip),
                      ("forecast", forecast_cmd), ("whatif", whatif), ("plan", plan_cmd),
-                     ("cat", cat)]:
+                     ("cat", cat), ("retrain", retrain), ("model", model_cmd)]:
         app.add_handler(CommandHandler(name, fn))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     hour = budget.morning_hour()

@@ -67,6 +67,10 @@ class Budget:
         rows = self.advice_ws.get("A2:B", value_render_option="UNFORMATTED_VALUE")
         return [r[1] for r in rows if len(r) > 1 and r[0] == situation and str(r[1]).strip()]
 
+    def all_tips(self) -> list[tuple[str, str]]:
+        rows = self.advice_ws.get("A2:B", value_render_option="UNFORMATTED_VALUE")
+        return [(str(r[0]), str(r[1])) for r in rows if len(r) > 1 and str(r[1]).strip()]
+
     def random_tip(self, situation: str) -> str:
         tips = self.tips(situation)
         return random.choice(tips) if tips else ""

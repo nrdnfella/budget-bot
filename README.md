@@ -67,6 +67,8 @@ Because November started before the bot, send `/earlier <amount>` with what you'
 /cat starbucks Coffee teach a keyword → category
 /teach overspent Your card filed a complaint.
 /tip [situation]
+/retrain              rebuild budget-jester from the Advice tab
+/model base|jester    switch models
 ```
 Situations: overspent, on_track, saving, withdraw, payday, morning, forecast.
 
@@ -96,8 +98,15 @@ The bot already does this in `bot/advice.py` (`build_prompt`). To improve result
 - [Prompt engineering overview](https://docs.claude.com/en/docs/build-with-claude/prompt-engineering/overview): clear instructions, examples, output format. Written for Claude, but the techniques apply to small models too.
 - *Hands-On Large Language Models*, Jay Alammar and Maarten Grootendorst (O'Reilly, 2024), chapter 6 "Prompt Engineering". [O'Reilly page](https://www.oreilly.com/library/view/hands-on-large-language/9781098150952/)
 
-### Level 2: Ollama Modelfile
-A Modelfile builds a new local model on top of `qwen2.5:3b`: `SYSTEM` sets the persona, and `MESSAGE user` / `MESSAGE assistant` pairs add example exchanges. Build it with `ollama create budget-jester -f Modelfile`, then set `OLLAMA_MODEL=budget-jester`.
+### Level 2: Ollama Modelfile (built in: `/retrain`)
+`/retrain` builds a model called `budget-jester` on top of `qwen2.5:3b`. It contains:
+- a persona (`SYSTEM`): a kind but teasing budget jester that writes one line of up to 25 words;
+- up to 6 of your newest tips for each situation from the Advice tab, as example dialogues (`MESSAGE user` / `MESSAGE assistant`);
+- generation settings (`PARAMETER`): temperature 0.9 and a repeat penalty so it doesn't copy the examples word for word.
+
+The bot then switches to it and sends a sample. Run `/retrain` again after teaching new tips. `/model base` switches back to the plain model and `/model jester` returns to yours. Your choice is saved in `data/model.txt`.
+
+Code: `bot/jester.py`. An example built from the starter tips is in `ollama/Modelfile.example`. To build it by hand: `docker compose run --rm bot python jester.py > Modelfile`, then `ollama create budget-jester -f Modelfile`.
 - [Modelfile reference](https://docs.ollama.com/modelfile): `FROM`, `SYSTEM`, `MESSAGE`, `PARAMETER`, `ADAPTER`.
 
 ### Level 3: fine-tuning with LoRA

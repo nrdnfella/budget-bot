@@ -145,4 +145,6 @@ Forecasts:
 
 /teach <situation> <tip>: teach the bot a new tip
   situations: overspent, on_track, saving, withdraw, payday, morning, forecast
-/tip [situation]: get a tip now"""
+/tip [situation]: get a tip now
+/retrain: rebuild the budget-jester model from the Advice tab
+/model: show or switch the model (base / jester)"""

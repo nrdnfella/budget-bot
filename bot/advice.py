@@ -70,3 +70,14 @@ class Adviser:
             except Exception as e:  # model down, slow or not pulled: use the table
                 log.warning("Ollama unavailable, using table tip: %s", e)
         return random.choice(examples) if examples else ""
+
+    async def create_model(self, body: dict, timeout: float = 600.0) -> None:
+        """POST /api/create. Raises on failure."""
+        if not self.url:
+            raise RuntimeError("OLLAMA_URL is not set")
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            r = await client.post(f"{self.url}/api/create", json=body)
+            r.raise_for_status()
+            status = r.json().get("status", "")
+            if status != "success":
+                raise RuntimeError(f"Ollama answered: {status or r.text[:200]}")
